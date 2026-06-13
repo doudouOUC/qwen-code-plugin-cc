@@ -6,6 +6,7 @@ This plugin adds:
 
 - `/qwen:setup` to check whether the local `qwen` CLI is available.
 - `/qwen:review` to run Qwen Code's built-in `/review` skill against the current repository.
+- `/qwen:status`, `/qwen:result`, and `/qwen:cancel` to manage long-running review jobs.
 
 ## Requirements
 
@@ -53,6 +54,14 @@ Review local changes:
 /qwen:review
 ```
 
+`/qwen:review` starts in the background by default and prints a job id.
+
+Wait for a small review in the foreground:
+
+```bash
+/qwen:review --wait
+```
+
 Review a pull request:
 
 ```bash
@@ -71,6 +80,25 @@ Post Qwen Code inline comments on a PR:
 /qwen:review 123 --comment
 ```
 
+Check a long-running review:
+
+```bash
+/qwen:status
+/qwen:status qwen-review-1234abcd
+```
+
+Read a finished review:
+
+```bash
+/qwen:result qwen-review-1234abcd
+```
+
+Cancel a running review:
+
+```bash
+/qwen:cancel qwen-review-1234abcd
+```
+
 ## Notes
 
 `/qwen:review` is review-only from Claude Code's side. It forwards your arguments to Qwen Code's `/review` skill, appends a run-scoped review-only system prompt, and returns Qwen Code output unchanged.
@@ -79,6 +107,12 @@ The companion runs Qwen Code with `--approval-mode yolo` so headless review can 
 
 ```bash
 export QWEN_PLUGIN_NO_SANDBOX=1
+```
+
+Background job state is stored outside the project under:
+
+```text
+~/.qwen-code-plugin-cc/workspaces/
 ```
 
 ## Development

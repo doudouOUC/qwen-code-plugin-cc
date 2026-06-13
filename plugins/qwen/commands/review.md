@@ -1,6 +1,6 @@
 ---
 description: Run a Qwen Code review against local git state
-argument-hint: '[review arguments]'
+argument-hint: '[--wait|--background] [review arguments]'
 disable-model-invocation: true
 allowed-tools: Bash(node:*), Bash(qwen:*)
 disallowed-tools: Write, Edit, MultiEdit, NotebookEdit
@@ -15,12 +15,17 @@ Core constraints:
 - This command is review-only.
 - Do not fix issues, apply patches, stage files, commit, push, or suggest that you are about to make changes.
 - Your only job is to run the review and return Qwen Code's output verbatim to the user.
+- Reviews run in the background by default because they can take a long time.
+- Use `--wait` only when the user explicitly wants to block until the review finishes.
+- Use `--background` to make the default background mode explicit.
 
 Argument handling:
 - Preserve the user's arguments exactly.
 - Do not add extra review instructions or rewrite the user's intent.
 - Examples:
   - `/qwen:review`
+  - `/qwen:review --wait`
+  - `/qwen:review --background 123`
   - `/qwen:review 123`
   - `/qwen:review src/auth.ts`
   - `/qwen:review 123 --comment`
