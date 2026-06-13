@@ -1,0 +1,21 @@
+{
+  "name": "qwen-code",
+  "owner": {
+    "name": "doudouOUC"
+  },
+  "metadata": {
+    "description": "Qwen Code plugins for Claude Code.",
+    "version": "0.1.1"
+  },
+  "plugins": [
+    {
+      "name": "qwen",
+      "description": "Run Qwen Code review from Claude Code.",
+      "version": "0.1.1",
+      "author": {
+        "name": "doudouOUC"
+      },
+      "source": "./plugins/qwen"
+    }
+  ]
+}
