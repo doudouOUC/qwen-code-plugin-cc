@@ -130,6 +130,7 @@ test('review command is a deterministic review-only forwarder', () => {
   assert.match(source, /Edit/);
   assert.match(source, /--wait/);
   assert.match(source, /--background/);
+  assert.match(source, /Background mode returns a job id/i);
   assert.doesNotMatch(source, /Bash\(git:\*\)/);
   assert.match(source, /qwen-companion\.mjs" review "\$ARGUMENTS"/);
   assert.match(source, /Return stdout verbatim/i);
@@ -233,6 +234,22 @@ test('background review can be canceled', () => {
   const canceled = runCompanion(['cancel', jobId], env);
   assert.equal(canceled.status, 0);
   assert.match(canceled.stdout, /cancel/i);
+
+  const status = waitForCommand(['status', jobId], env, (attempt) =>
+    attempt.stdout.includes('canceled'),
+  );
+  assert.equal(status.status, 0);
+});
+
+test('background review can be canceled immediately after starting', () => {
+  const { env } = createFakeEnv({ mode: 'slow' });
+  const started = runCompanion(['review', '--background'], env);
+
+  assert.equal(started.status, 0);
+
+  const jobId = extractJobId(started.stdout);
+  const canceled = runCompanion(['cancel', jobId], env);
+  assert.equal(canceled.status, 0);
 
   const status = waitForCommand(['status', jobId], env, (attempt) =>
     attempt.stdout.includes('canceled'),

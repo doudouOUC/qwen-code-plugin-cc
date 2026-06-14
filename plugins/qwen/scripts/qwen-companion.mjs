@@ -412,7 +412,6 @@ function runQwenReview(cwd, prompt, options = {}) {
     const child = spawn('qwen', buildQwenArgs(prompt, { streamJson: true }), {
       cwd,
       env: process.env,
-      detached: Boolean(options.detachedQwen),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -569,7 +568,6 @@ async function handleReview(args) {
 
   updateJob(cwd, job.id, {
     workerPid: child.pid ?? null,
-    status: 'queued',
   });
 
   console.log(`Qwen review started: ${job.id}`);
@@ -585,17 +583,23 @@ async function handleWorker(args) {
   }
 
   const cwd = process.cwd();
+  if (readJob(cwd, jobId).status === 'canceled') {
+    return;
+  }
   const job = updateJob(cwd, jobId, {
     status: 'running',
     workerPid: process.pid,
   });
 
   const result = await runQwenReview(cwd, job.prompt, {
-    detachedQwen: true,
     stdoutFile: job.stdoutFile,
     stderrFile: job.stderrFile,
     jsonlFile: job.jsonlFile,
     onQwenPid(pid) {
+      if (readJob(cwd, jobId).status === 'canceled') {
+        killPid(pid);
+        return;
+      }
       updateJob(cwd, jobId, {
         qwenPid: pid,
         status: 'running',

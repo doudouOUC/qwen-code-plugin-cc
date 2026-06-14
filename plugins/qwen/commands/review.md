@@ -14,8 +14,9 @@ Raw slash-command arguments:
 Core constraints:
 - This command is review-only.
 - Do not fix issues, apply patches, stage files, commit, push, or suggest that you are about to make changes.
-- Your only job is to run the review and return Qwen Code's output verbatim to the user.
+- Your only job is to run the review companion and return its stdout verbatim to the user.
 - Reviews run in the background by default because they can take a long time.
+- Background mode returns a job id and follow-up commands, not the final review body.
 - Use `--wait` only when the user explicitly wants to block until the review finishes.
 - Use `--background` to make the default background mode explicit.
 
