@@ -113,6 +113,13 @@ function isModelEqualsFlag(token) {
   );
 }
 
+function validateModelValue(flag, value) {
+  if (!value || value.startsWith('-')) {
+    throw new Error(`Missing value for ${flag}.`);
+  }
+  return value;
+}
+
 function removeRawTokenSpans(raw, spans) {
   const source = String(raw ?? '');
   let result = String(raw ?? '');
@@ -150,16 +157,13 @@ function parseReviewInput(args) {
         mode = 'background';
         removeSpans.push(token);
       } else if (isModelEqualsFlag(token)) {
-        model = token.value.slice('--model='.length);
+        model = validateModelValue('--model', token.value.slice('--model='.length));
         removeSpans.push(token);
       } else if (!token.quoted && !token.escaped && token.value === '--model=') {
         throw new Error('Missing value for --model.');
       } else if (isModeFlag(token, '--model') || isModeFlag(token, '-m')) {
         const valueToken = tokens[index + 1];
-        if (!valueToken) {
-          throw new Error(`Missing value for ${token.value}.`);
-        }
-        model = valueToken.value;
+        model = validateModelValue(token.value, valueToken?.value);
         removeSpans.push(token, valueToken);
         index += 1;
       }
@@ -184,15 +188,12 @@ function parseReviewInput(args) {
     } else if (token === '--background') {
       mode = 'background';
     } else if (token.startsWith('--model=') && token.length > '--model='.length) {
-      model = token.slice('--model='.length);
+      model = validateModelValue('--model', token.slice('--model='.length));
     } else if (token === '--model=') {
       throw new Error('Missing value for --model.');
     } else if (token === '--model' || token === '-m') {
       const value = tokens[index + 1];
-      if (!value) {
-        throw new Error(`Missing value for ${token}.`);
-      }
-      model = value;
+      model = validateModelValue(token, value);
       index += 1;
     } else {
       reviewTokens.push(token);
@@ -554,7 +555,7 @@ function printUsage() {
     [
       'Usage:',
       '  node scripts/qwen-companion.mjs setup',
-      '  node scripts/qwen-companion.mjs review [--wait|--background] [review arguments]',
+      '  node scripts/qwen-companion.mjs review [--wait|--background] [--model model] [review arguments]',
       '  node scripts/qwen-companion.mjs status [job-id]',
       '  node scripts/qwen-companion.mjs result [job-id]',
       '  node scripts/qwen-companion.mjs cancel [job-id]',

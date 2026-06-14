@@ -248,6 +248,37 @@ test('review reports missing --model value', () => {
   assert.match(result.stderr, /Missing value for --model/);
 });
 
+test('review rejects --model values that look like plugin flags', () => {
+  const { env } = createFakeEnv();
+
+  const longFlag = runCompanion(['review', '--model --wait'], env);
+  assert.equal(longFlag.status, 1);
+  assert.match(longFlag.stderr, /Missing value for --model/);
+
+  const shortFlag = runCompanion(['review', '-m --background'], env);
+  assert.equal(shortFlag.status, 1);
+  assert.match(shortFlag.stderr, /Missing value for -m/);
+
+  const equalsFlag = runCompanion(['review', '--model='], env);
+  assert.equal(equalsFlag.status, 1);
+  assert.match(equalsFlag.stderr, /Missing value for --model/);
+
+  const reviewFlag = runCompanion(['review', '--model --comment'], env);
+  assert.equal(reviewFlag.status, 1);
+  assert.match(reviewFlag.stderr, /Missing value for --model/);
+
+  const equalsReviewFlag = runCompanion(['review', '--model=--comment'], env);
+  assert.equal(equalsReviewFlag.status, 1);
+  assert.match(equalsReviewFlag.stderr, /Missing value for --model/);
+});
+
+test('companion help documents model selection', () => {
+  const result = runCompanion(['--help'], process.env);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /--model/);
+});
+
 test('background review records status and result', () => {
   const { env } = createFakeEnv();
   const started = runCompanion(['review', '--background', '123 --comment'], env);
