@@ -105,10 +105,10 @@ test('marketplace exposes the qwen plugin', () => {
   const marketplace = readJson('.claude-plugin/marketplace.json');
 
   assert.equal(marketplace.name, 'qwen-code');
-  assert.equal(marketplace.metadata.version, '0.2.0');
+  assert.equal(marketplace.metadata.version, '0.3.0');
   assert.equal(marketplace.plugins.length, 1);
   assert.equal(marketplace.plugins[0].name, 'qwen');
-  assert.equal(marketplace.plugins[0].version, '0.2.0');
+  assert.equal(marketplace.plugins[0].version, '0.3.0');
   assert.equal(marketplace.plugins[0].source, './plugins/qwen');
 });
 
@@ -116,7 +116,7 @@ test('plugin manifest uses the expected Claude Code plugin name', () => {
   const plugin = readJson('plugins/qwen/.claude-plugin/plugin.json');
 
   assert.equal(plugin.name, 'qwen');
-  assert.equal(plugin.version, '0.2.0');
+  assert.equal(plugin.version, '0.3.0');
 });
 
 test('review command is a deterministic review-only forwarder', () => {
@@ -130,6 +130,7 @@ test('review command is a deterministic review-only forwarder', () => {
   assert.match(source, /Edit/);
   assert.match(source, /--wait/);
   assert.match(source, /--background/);
+  assert.match(source, /--model/);
   assert.match(source, /Background mode returns a job id/i);
   assert.doesNotMatch(source, /Bash\(git:\*\)/);
   assert.match(source, /qwen-companion\.mjs" review "\$ARGUMENTS"/);
@@ -189,6 +190,44 @@ test('review --wait forwards raw arguments with a review-only system prompt', ()
   assert.match(forwardedArgs[systemPromptIndex + 1], /Do not apply autofixes/i);
 });
 
+test('review --wait forwards --model to the Qwen CLI only', () => {
+  const { argsPath, env } = createFakeEnv();
+  const result = runCompanion(
+    [
+      'review',
+      '--wait --model qwen3-coder-plus "src/foo bar.ts" --comment',
+    ],
+    env,
+  );
+
+  assert.equal(result.status, 0);
+
+  const forwardedArgs = JSON.parse(fs.readFileSync(argsPath, 'utf8'));
+  const modelIndex = forwardedArgs.indexOf('--model');
+  assert.notEqual(modelIndex, -1);
+  assert.equal(forwardedArgs[modelIndex + 1], 'qwen3-coder-plus');
+  assert.deepEqual(forwardedArgs.slice(-2), [
+    '--prompt',
+    '/review "src/foo bar.ts" --comment',
+  ]);
+});
+
+test('review --wait supports --model=value syntax', () => {
+  const { argsPath, env } = createFakeEnv();
+  const result = runCompanion(
+    ['review', '--wait --model=qwen3-coder-plus 123'],
+    env,
+  );
+
+  assert.equal(result.status, 0);
+
+  const forwardedArgs = JSON.parse(fs.readFileSync(argsPath, 'utf8'));
+  const modelIndex = forwardedArgs.indexOf('--model');
+  assert.notEqual(modelIndex, -1);
+  assert.equal(forwardedArgs[modelIndex + 1], 'qwen3-coder-plus');
+  assert.deepEqual(forwardedArgs.slice(-2), ['--prompt', '/review 123']);
+});
+
 test('review --wait sandbox can be explicitly disabled for constrained environments', () => {
   const { argsPath, env } = createFakeEnv();
   env.QWEN_PLUGIN_NO_SANDBOX = '1';
@@ -199,6 +238,14 @@ test('review --wait sandbox can be explicitly disabled for constrained environme
 
   const forwardedArgs = JSON.parse(fs.readFileSync(argsPath, 'utf8'));
   assert.equal(forwardedArgs.includes('--sandbox'), false);
+});
+
+test('review reports missing --model value', () => {
+  const { env } = createFakeEnv();
+  const result = runCompanion(['review', '--wait --model'], env);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Missing value for --model/);
 });
 
 test('background review records status and result', () => {
@@ -220,6 +267,32 @@ test('background review records status and result', () => {
   assert.equal(status.status, 0);
   assert.match(status.stdout, /succeeded/);
   assert.match(status.stdout, new RegExp(jobId));
+});
+
+test('background review records and displays the selected model', () => {
+  const { argsPath, env } = createFakeEnv();
+  const started = runCompanion(
+    ['review', '--background -m qwen3-coder-plus 123 --comment'],
+    env,
+  );
+
+  assert.equal(started.status, 0);
+
+  const jobId = extractJobId(started.stdout);
+  const result = waitForCommand(['result', jobId], env, (attempt) =>
+    attempt.stdout.includes('Model: qwen3-coder-plus') &&
+    attempt.stdout.includes('Review body'),
+  );
+  assert.match(result.stdout, /Review body/);
+
+  const status = runCompanion(['status', jobId], env);
+  assert.match(status.stdout, /model=qwen3-coder-plus/);
+
+  const forwardedArgs = JSON.parse(fs.readFileSync(argsPath, 'utf8'));
+  const modelIndex = forwardedArgs.indexOf('--model');
+  assert.notEqual(modelIndex, -1);
+  assert.equal(forwardedArgs[modelIndex + 1], 'qwen3-coder-plus');
+  assert.deepEqual(forwardedArgs.slice(-2), ['--prompt', '/review 123 --comment']);
 });
 
 test('background review can be canceled', () => {

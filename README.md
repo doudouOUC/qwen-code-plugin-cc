@@ -62,6 +62,13 @@ Wait for a small review in the foreground:
 /qwen:review --wait
 ```
 
+Run with a specific Qwen Code model:
+
+```bash
+/qwen:review --model qwen3-coder-plus
+/qwen:review -m qwen3-coder-plus 123 --comment
+```
+
 Review a pull request:
 
 ```bash
@@ -101,7 +108,9 @@ Cancel a running review:
 
 ## Notes
 
-`/qwen:review` is review-only from Claude Code's side. It forwards your arguments to Qwen Code's `/review` skill and appends a run-scoped review-only system prompt. In the default background mode it prints a job id and follow-up commands; use `/qwen:result <job-id>` to read the final review. With `--wait`, it prints Qwen Code output unchanged.
+`/qwen:review` is review-only from Claude Code's side. It forwards your review target arguments to Qwen Code's `/review` skill and appends a run-scoped review-only system prompt. In the default background mode it prints a job id and follow-up commands; use `/qwen:result <job-id>` to read the final review. With `--wait`, it prints Qwen Code output unchanged.
+
+`--wait`, `--background`, `--model <model>`, `--model=<model>`, and `-m <model>` are handled by this plugin. Other arguments are passed to Qwen Code's `/review` prompt unchanged.
 
 The companion runs Qwen Code with `--approval-mode yolo` so headless review can execute the analysis commands required by `/review`. Sandboxing is enabled by default. If your environment cannot run Qwen Code sandboxing, explicitly disable it with:
 

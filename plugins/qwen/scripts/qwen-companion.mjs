@@ -104,9 +104,30 @@ function isModeFlag(token, flag) {
   return token.value === flag && !token.quoted && !token.escaped;
 }
 
+function isModelEqualsFlag(token) {
+  return (
+    !token.quoted &&
+    !token.escaped &&
+    token.value.startsWith('--model=') &&
+    token.value.length > '--model='.length
+  );
+}
+
 function removeRawTokenSpans(raw, spans) {
+  const source = String(raw ?? '');
   let result = String(raw ?? '');
-  for (const span of [...spans].sort((left, right) => right.start - left.start)) {
+  const expandedSpans = spans.map((span) => {
+    let end = span.end;
+    while (end < source.length && /\s/.test(source[end])) {
+      end += 1;
+    }
+    return {
+      ...span,
+      end,
+    };
+  });
+
+  for (const span of expandedSpans.sort((left, right) => right.start - left.start)) {
     result = `${result.slice(0, span.start)}${result.slice(span.end)}`;
   }
   return result.trim();
@@ -117,32 +138,62 @@ function parseReviewInput(args) {
     const raw = String(args[0] ?? '');
     const removeSpans = [];
     let mode = 'background';
+    let model = null;
+    const tokens = scanRawArgumentString(raw);
 
-    for (const token of scanRawArgumentString(raw)) {
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
       if (isModeFlag(token, '--wait')) {
         mode = 'wait';
         removeSpans.push(token);
       } else if (isModeFlag(token, '--background')) {
         mode = 'background';
         removeSpans.push(token);
+      } else if (isModelEqualsFlag(token)) {
+        model = token.value.slice('--model='.length);
+        removeSpans.push(token);
+      } else if (!token.quoted && !token.escaped && token.value === '--model=') {
+        throw new Error('Missing value for --model.');
+      } else if (isModeFlag(token, '--model') || isModeFlag(token, '-m')) {
+        const valueToken = tokens[index + 1];
+        if (!valueToken) {
+          throw new Error(`Missing value for ${token.value}.`);
+        }
+        model = valueToken.value;
+        removeSpans.push(token, valueToken);
+        index += 1;
       }
     }
 
     return {
       mode,
+      model,
       rawArguments: removeRawTokenSpans(raw, removeSpans),
     };
   }
 
   const tokens = normalizeArgv(args);
   let mode = 'background';
+  let model = null;
   const reviewTokens = [];
 
-  for (const token of tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
     if (token === '--wait') {
       mode = 'wait';
     } else if (token === '--background') {
       mode = 'background';
+    } else if (token.startsWith('--model=') && token.length > '--model='.length) {
+      model = token.slice('--model='.length);
+    } else if (token === '--model=') {
+      throw new Error('Missing value for --model.');
+    } else if (token === '--model' || token === '-m') {
+      const value = tokens[index + 1];
+      if (!value) {
+        throw new Error(`Missing value for ${token}.`);
+      }
+      model = value;
+      index += 1;
     } else {
       reviewTokens.push(token);
     }
@@ -150,6 +201,7 @@ function parseReviewInput(args) {
 
   return {
     mode,
+    model,
     rawArguments: reviewTokens.join(' '),
   };
 }
@@ -301,6 +353,7 @@ function createJob(cwd, request) {
     workspaceId: state.workspaceId,
     prompt: request.prompt,
     rawArguments: request.rawArguments,
+    model: request.model,
     workerPid: null,
     qwenPid: null,
     exitCode: null,
@@ -366,6 +419,10 @@ function buildQwenArgs(prompt, options = {}) {
     args.push('--sandbox');
   }
 
+  if (options.model) {
+    args.push('--model', options.model);
+  }
+
   if (options.streamJson) {
     args.push('--output-format', 'stream-json', '--include-partial-messages');
   }
@@ -409,11 +466,18 @@ function processJsonLine(line, state) {
 
 function runQwenReview(cwd, prompt, options = {}) {
   return new Promise((resolve) => {
-    const child = spawn('qwen', buildQwenArgs(prompt, { streamJson: true }), {
-      cwd,
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      'qwen',
+      buildQwenArgs(prompt, {
+        model: options.model,
+        streamJson: true,
+      }),
+      {
+        cwd,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
 
     const parsedState = {
       sessionId: null,
@@ -543,7 +607,9 @@ async function handleReview(args) {
   const prompt = buildQwenReviewPrompt(request.rawArguments);
 
   if (request.mode === 'wait') {
-    const result = await runQwenReview(cwd, prompt);
+    const result = await runQwenReview(cwd, prompt, {
+      model: request.model,
+    });
     if (result.result) {
       process.stdout.write(`${result.result.trimEnd()}\n`);
     }
@@ -555,6 +621,7 @@ async function handleReview(args) {
   }
 
   const job = createJob(cwd, {
+    model: request.model,
     prompt,
     rawArguments: request.rawArguments,
   });
@@ -592,6 +659,7 @@ async function handleWorker(args) {
   });
 
   const result = await runQwenReview(cwd, job.prompt, {
+    model: job.model,
     stdoutFile: job.stdoutFile,
     stderrFile: job.stderrFile,
     jsonlFile: job.jsonlFile,
@@ -641,6 +709,9 @@ function resolveJob(cwd, jobId) {
 
 function renderJobLine(job) {
   const bits = [job.id, job.status];
+  if (job.model) {
+    bits.push(`model=${job.model}`);
+  }
   if (job.sessionId) {
     bits.push(`session=${job.sessionId}`);
   }
@@ -657,6 +728,9 @@ function handleStatus(args) {
   if (jobId) {
     const job = resolveJob(cwd, jobId);
     console.log(renderJobLine(job));
+    if (job.model) {
+      console.log(`Model: ${job.model}`);
+    }
     console.log(`Started: ${job.startedAt}`);
     console.log(`Updated: ${job.updatedAt}`);
     if (job.endedAt) {
@@ -683,6 +757,9 @@ function handleResult(args) {
 
   console.log(`Job: ${job.id}`);
   console.log(`Status: ${job.status}`);
+  if (job.model) {
+    console.log(`Model: ${job.model}`);
+  }
   if (job.sessionId) {
     console.log(`Session: ${job.sessionId}`);
   }
