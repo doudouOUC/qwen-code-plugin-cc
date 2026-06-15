@@ -71,6 +71,13 @@ Run with a specific Qwen Code model:
 /qwen:review -m qwen3-coder-plus 123 --comment
 ```
 
+Recommended model style for larger reviews:
+
+```bash
+/qwen:review --model qwen3.7-max
+/qwen:review --model <deepseek-model-name>
+```
+
 Review a pull request:
 
 ```bash
@@ -113,6 +120,28 @@ Cancel a running review:
 `/qwen:review` is review-only from Claude Code's side. It forwards your review target arguments to Qwen Code's `/review` skill and appends a run-scoped review-only system prompt. In the default background mode Claude Code owns the background command, so it can report completion and surface the final Qwen Code output automatically. Use `/qwen:status` to inspect an active run, `/qwen:cancel` to stop it, and `/qwen:result <job-id>` if you want to read a stored result again. With `--wait`, it prints Qwen Code output unchanged in the current turn.
 
 `--wait`, `--background`, `--model <model>`, `--model=<model>`, and `-m <model>` are handled by this plugin. Other arguments are passed to Qwen Code's `/review` prompt unchanged.
+
+## How Qwen Code review runs
+
+This plugin does not implement its own reviewer. It starts the local Qwen Code
+CLI and asks it to run its built-in `/review` skill. Qwen Code decides the
+review target from the forwarded arguments:
+
+- no extra arguments: local uncommitted changes
+- PR number or PR URL: that pull request's diff and PR context
+- file path: that file's diff, or the current file content when there is no diff
+
+Qwen Code review is usually more expensive than a single prompt over `git diff`.
+It can collect PR context, load project review rules, run deterministic checks,
+inspect changed files, and synthesize verified findings. For large PRs this can
+send repeated overlapping repository and review context to the model.
+
+For that reason, prefer strong models with good prompt-cache behavior for larger
+reviews. In environments where they are available, `qwen3.7-max` and DeepSeek
+family models are good candidates because high cache hit rates can reduce repeat
+review latency and cost. The plugin only forwards the model name to Qwen Code;
+it does not validate model availability, so use the exact model identifier
+configured in your Qwen Code environment.
 
 The companion runs Qwen Code with `--approval-mode yolo` so headless review can execute the analysis commands required by `/review`. Sandboxing is enabled by default. If your environment cannot run Qwen Code sandboxing, explicitly disable it with:
 
