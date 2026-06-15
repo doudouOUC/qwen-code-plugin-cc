@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -80,6 +80,31 @@ function runCompanion(args, env) {
   });
 }
 
+function spawnCompanion(args, env) {
+  return spawn(process.execPath, [COMPANION, ...args], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function waitForExit(child) {
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString('utf8');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.on('close', (status, signal) => {
+      resolve({ status, signal, stdout, stderr });
+    });
+  });
+}
+
 function extractJobId(stdout) {
   const match = stdout.match(/qwen-review-[a-f0-9]+/);
   assert.ok(match, `Expected job id in output: ${stdout}`);
@@ -105,10 +130,10 @@ test('marketplace exposes the qwen plugin', () => {
   const marketplace = readJson('.claude-plugin/marketplace.json');
 
   assert.equal(marketplace.name, 'qwen-code');
-  assert.equal(marketplace.metadata.version, '0.3.0');
+  assert.equal(marketplace.metadata.version, '0.4.0');
   assert.equal(marketplace.plugins.length, 1);
   assert.equal(marketplace.plugins[0].name, 'qwen');
-  assert.equal(marketplace.plugins[0].version, '0.3.0');
+  assert.equal(marketplace.plugins[0].version, '0.4.0');
   assert.equal(marketplace.plugins[0].source, './plugins/qwen');
 });
 
@@ -116,13 +141,16 @@ test('plugin manifest uses the expected Claude Code plugin name', () => {
   const plugin = readJson('plugins/qwen/.claude-plugin/plugin.json');
 
   assert.equal(plugin.name, 'qwen');
-  assert.equal(plugin.version, '0.3.0');
+  assert.equal(plugin.version, '0.4.0');
 });
 
 test('review command is a deterministic review-only forwarder', () => {
   const source = readPlugin('commands/review.md');
 
   assert.match(source, /disable-model-invocation:\s*true/);
+  assert.match(source, /\bBash\(/);
+  assert.match(source, /run_in_background:\s*true/);
+  assert.match(source, /description:\s*"Qwen review"/);
   assert.match(source, /review-only/i);
   assert.match(source, /Do not fix issues/i);
   assert.match(source, /disallowed-tools:/);
@@ -131,7 +159,9 @@ test('review command is a deterministic review-only forwarder', () => {
   assert.match(source, /--wait/);
   assert.match(source, /--background/);
   assert.match(source, /--model/);
-  assert.match(source, /Background mode returns a job id/i);
+  assert.match(source, /Claude Code's `Bash\([^`]+run_in_background: true\)` is what actually detaches/i);
+  assert.match(source, /Do not call `BashOutput`/);
+  assert.doesNotMatch(source, /Background mode returns a job id/i);
   assert.doesNotMatch(source, /Bash\(git:\*\)/);
   assert.match(source, /qwen-companion\.mjs" review "\$ARGUMENTS"/);
   assert.match(source, /Return stdout verbatim/i);
@@ -279,28 +309,24 @@ test('companion help documents model selection', () => {
   assert.match(result.stdout, /--model/);
 });
 
-test('background review records status and result', () => {
+test('background review runs to completion and records status and result', () => {
   const { env } = createFakeEnv();
   const started = runCompanion(['review', '--background', '123 --comment'], env);
 
   assert.equal(started.status, 0);
-  assert.match(started.stdout, /Qwen review started:/);
+  assert.match(started.stdout, /Review body/);
 
-  const jobId = extractJobId(started.stdout);
-  const result = waitForCommand(['result', jobId], env, (attempt) =>
-    attempt.stdout.includes('Review body'),
-  );
-
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /Review body/);
-
-  const status = runCompanion(['status', jobId], env);
+  const status = runCompanion(['status'], env);
   assert.equal(status.status, 0);
   assert.match(status.stdout, /succeeded/);
-  assert.match(status.stdout, new RegExp(jobId));
+  const jobId = extractJobId(status.stdout);
+
+  const result = runCompanion(['result', jobId], env);
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Review body/);
 });
 
-test('background review records and displays the selected model', () => {
+test('background review runs to completion with the selected model', () => {
   const { argsPath, env } = createFakeEnv();
   const started = runCompanion(
     ['review', '--background -m qwen3-coder-plus 123 --comment'],
@@ -308,15 +334,15 @@ test('background review records and displays the selected model', () => {
   );
 
   assert.equal(started.status, 0);
+  assert.match(started.stdout, /Review body/);
 
-  const jobId = extractJobId(started.stdout);
-  const result = waitForCommand(['result', jobId], env, (attempt) =>
-    attempt.stdout.includes('Model: qwen3-coder-plus') &&
-    attempt.stdout.includes('Review body'),
-  );
+  const status = runCompanion(['status'], env);
+  const jobId = extractJobId(status.stdout);
+
+  const result = runCompanion(['result', jobId], env);
+  assert.match(result.stdout, /Model: qwen3-coder-plus/);
   assert.match(result.stdout, /Review body/);
 
-  const status = runCompanion(['status', jobId], env);
   assert.match(status.stdout, /model=qwen3-coder-plus/);
 
   const forwardedArgs = JSON.parse(fs.readFileSync(argsPath, 'utf8'));
@@ -326,34 +352,20 @@ test('background review records and displays the selected model', () => {
   assert.deepEqual(forwardedArgs.slice(-2), ['--prompt', '/review 123 --comment']);
 });
 
-test('background review can be canceled', () => {
+test('background review can be canceled', async () => {
   const { env } = createFakeEnv({ mode: 'slow' });
-  const started = runCompanion(['review', '--background'], env);
+  const child = spawnCompanion(['review', '--background'], env);
 
-  assert.equal(started.status, 0);
-
-  const jobId = extractJobId(started.stdout);
-  waitForCommand(['status', jobId], env, (attempt) => attempt.stdout.includes('running'));
+  const statusBeforeCancel = waitForCommand(['status'], env, (attempt) =>
+    attempt.stdout.includes('running'),
+  );
+  const jobId = extractJobId(statusBeforeCancel.stdout);
 
   const canceled = runCompanion(['cancel', jobId], env);
   assert.equal(canceled.status, 0);
   assert.match(canceled.stdout, /cancel/i);
 
-  const status = waitForCommand(['status', jobId], env, (attempt) =>
-    attempt.stdout.includes('canceled'),
-  );
-  assert.equal(status.status, 0);
-});
-
-test('background review can be canceled immediately after starting', () => {
-  const { env } = createFakeEnv({ mode: 'slow' });
-  const started = runCompanion(['review', '--background'], env);
-
-  assert.equal(started.status, 0);
-
-  const jobId = extractJobId(started.stdout);
-  const canceled = runCompanion(['cancel', jobId], env);
-  assert.equal(canceled.status, 0);
+  await waitForExit(child);
 
   const status = waitForCommand(['status', jobId], env, (attempt) =>
     attempt.stdout.includes('canceled'),

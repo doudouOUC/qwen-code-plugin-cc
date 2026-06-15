@@ -54,7 +54,9 @@ Review local changes:
 /qwen:review
 ```
 
-`/qwen:review` starts in the background by default and prints a job id.
+`/qwen:review` starts in a Claude Code background task by default. Claude Code
+will report when the background command finishes and surface the final Qwen Code
+review output.
 
 Wait for a small review in the foreground:
 
@@ -87,14 +89,14 @@ Post Qwen Code inline comments on a PR:
 /qwen:review 123 --comment
 ```
 
-Check a long-running review:
+Check a long-running review while it is still running:
 
 ```bash
 /qwen:status
 /qwen:status qwen-review-1234abcd
 ```
 
-Read a finished review:
+Read a finished review again:
 
 ```bash
 /qwen:result qwen-review-1234abcd
@@ -108,7 +110,7 @@ Cancel a running review:
 
 ## Notes
 
-`/qwen:review` is review-only from Claude Code's side. It forwards your review target arguments to Qwen Code's `/review` skill and appends a run-scoped review-only system prompt. In the default background mode it prints a job id and follow-up commands; use `/qwen:result <job-id>` to read the final review. With `--wait`, it prints Qwen Code output unchanged.
+`/qwen:review` is review-only from Claude Code's side. It forwards your review target arguments to Qwen Code's `/review` skill and appends a run-scoped review-only system prompt. In the default background mode Claude Code owns the background command, so it can report completion and surface the final Qwen Code output automatically. Use `/qwen:status` to inspect an active run, `/qwen:cancel` to stop it, and `/qwen:result <job-id>` if you want to read a stored result again. With `--wait`, it prints Qwen Code output unchanged in the current turn.
 
 `--wait`, `--background`, `--model <model>`, `--model=<model>`, and `-m <model>` are handled by this plugin. Other arguments are passed to Qwen Code's `/review` prompt unchanged.
 

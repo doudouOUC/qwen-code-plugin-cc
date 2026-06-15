@@ -6,7 +6,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 
 const INSTALL_COMMAND = 'npm install -g @qwen-code/qwen-code';
 const REVIEW_ONLY_SYSTEM_PROMPT = [
@@ -14,8 +13,6 @@ const REVIEW_ONLY_SYSTEM_PROMPT = [
   'When executing /review, report findings only.',
   'Do not apply autofixes, edit files, stage files, commit, push, or mutate the working tree.',
 ].join(' ');
-
-const SCRIPT_PATH = fileURLToPath(import.meta.url);
 
 function scanRawArgumentString(raw) {
   const source = String(raw ?? '');
@@ -144,17 +141,14 @@ function parseReviewInput(args) {
   if (args.length === 1) {
     const raw = String(args[0] ?? '');
     const removeSpans = [];
-    let mode = 'background';
     let model = null;
     const tokens = scanRawArgumentString(raw);
 
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index];
       if (isModeFlag(token, '--wait')) {
-        mode = 'wait';
         removeSpans.push(token);
       } else if (isModeFlag(token, '--background')) {
-        mode = 'background';
         removeSpans.push(token);
       } else if (isModelEqualsFlag(token)) {
         model = validateModelValue('--model', token.value.slice('--model='.length));
@@ -170,23 +164,21 @@ function parseReviewInput(args) {
     }
 
     return {
-      mode,
       model,
       rawArguments: removeRawTokenSpans(raw, removeSpans),
     };
   }
 
   const tokens = normalizeArgv(args);
-  let mode = 'background';
   let model = null;
   const reviewTokens = [];
 
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (token === '--wait') {
-      mode = 'wait';
+      continue;
     } else if (token === '--background') {
-      mode = 'background';
+      continue;
     } else if (token.startsWith('--model=') && token.length > '--model='.length) {
       model = validateModelValue('--model', token.slice('--model='.length));
     } else if (token === '--model=') {
@@ -201,7 +193,6 @@ function parseReviewInput(args) {
   }
 
   return {
-    mode,
     model,
     rawArguments: reviewTokens.join(' '),
   };
@@ -606,42 +597,14 @@ async function handleReview(args) {
 
   const request = parseReviewInput(args);
   const prompt = buildQwenReviewPrompt(request.rawArguments);
-
-  if (request.mode === 'wait') {
-    const result = await runQwenReview(cwd, prompt, {
-      model: request.model,
-    });
-    if (result.result) {
-      process.stdout.write(`${result.result.trimEnd()}\n`);
-    }
-    if (result.stderr) {
-      process.stderr.write(result.stderr);
-    }
-    process.exitCode = result.status === 'succeeded' ? 0 : 1;
-    return;
-  }
-
   const job = createJob(cwd, {
     model: request.model,
     prompt,
     rawArguments: request.rawArguments,
   });
-  const child = spawn(process.execPath, [SCRIPT_PATH, 'worker', job.id], {
-    cwd,
-    detached: true,
-    env: process.env,
-    stdio: 'ignore',
-  });
-  child.unref();
 
-  updateJob(cwd, job.id, {
-    workerPid: child.pid ?? null,
-  });
-
-  console.log(`Qwen review started: ${job.id}`);
-  console.log(`Status: /qwen:status ${job.id}`);
-  console.log(`Result: /qwen:result ${job.id}`);
-  console.log(`Cancel: /qwen:cancel ${job.id}`);
+  const { finalStatus, result } = await runTrackedReviewJob(cwd, job.id);
+  writeReviewOutput(finalStatus, result);
 }
 
 async function handleWorker(args) {
@@ -650,9 +613,23 @@ async function handleWorker(args) {
     throw new Error('Missing job id.');
   }
 
-  const cwd = process.cwd();
+  await runTrackedReviewJob(process.cwd(), jobId);
+}
+
+async function runTrackedReviewJob(cwd, jobId) {
   if (readJob(cwd, jobId).status === 'canceled') {
-    return;
+    return {
+      finalStatus: 'canceled',
+      result: {
+        status: 'canceled',
+        exitCode: null,
+        signal: null,
+        sessionId: null,
+        result: '',
+        stderr: '',
+        error: 'Canceled by user.',
+      },
+    };
   }
   const job = updateJob(cwd, jobId, {
     status: 'running',
@@ -694,6 +671,18 @@ async function handleWorker(args) {
           : result.error,
     endedAt: nowIso(),
   });
+
+  return { finalStatus, result };
+}
+
+function writeReviewOutput(finalStatus, result) {
+  if (result.result) {
+    process.stdout.write(`${result.result.trimEnd()}\n`);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  process.exitCode = finalStatus === 'succeeded' ? 0 : 1;
 }
 
 function resolveJob(cwd, jobId) {
