@@ -1,0 +1,19 @@
+{
+  "name": "qwen-code",
+  "interface": {
+    "displayName": "Qwen Code"
+  },
+  "plugins": [
+    {
+      "name": "qwen",
+      "source": {
+        "source": "local",
+        "path": "./plugins/qwen-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

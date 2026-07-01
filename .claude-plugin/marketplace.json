@@ -4,14 +4,14 @@
     "name": "doudouOUC"
   },
   "metadata": {
-    "description": "Qwen Code plugins for Claude Code.",
-    "version": "0.4.0"
+    "description": "Qwen Code plugins for Claude Code and Codex CLI.",
+    "version": "0.5.0"
   },
   "plugins": [
     {
       "name": "qwen",
       "description": "Run Qwen Code review from Claude Code.",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "author": {
         "name": "doudouOUC"
       },

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Qwen Code Review"
+  short_description: "Run Qwen Code review on changes, PRs, or files"
+  default_prompt: "Use $qwen-review to review the current changes"

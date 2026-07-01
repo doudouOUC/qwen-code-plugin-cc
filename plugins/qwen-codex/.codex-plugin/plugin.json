@@ -1,0 +1,26 @@
+{
+  "name": "qwen",
+  "version": "0.5.0",
+  "description": "Run Qwen Code review from Codex CLI.",
+  "author": {
+    "name": "doudouOUC"
+  },
+  "homepage": "https://github.com/doudouOUC/qwen-code-plugin-cc",
+  "repository": "https://github.com/doudouOUC/qwen-code-plugin-cc",
+  "license": "Apache-2.0",
+  "keywords": ["qwen", "review", "code-review"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Qwen Code Review",
+    "shortDescription": "Run Qwen Code review from Codex.",
+    "longDescription": "Use Qwen Code's /review skill to review local changes, pull requests, or specific files from within Codex CLI or Codex App.",
+    "developerName": "doudouOUC",
+    "category": "Developer Tools",
+    "capabilities": ["Read"],
+    "defaultPrompt": [
+      "Use $qwen-review to review the current changes",
+      "Use $qwen-review to review PR #",
+      "Use $qwen-review to review src/"
+    ]
+  }
+}

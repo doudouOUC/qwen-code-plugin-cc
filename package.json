@@ -1,9 +1,9 @@
 {
   "name": "qwen-code-plugin-cc",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
-  "description": "Claude Code plugin for running Qwen Code review.",
+  "description": "Qwen Code review plugin for Claude Code and Codex CLI.",
   "license": "Apache-2.0",
   "scripts": {
     "test": "node --test tests/*.test.mjs"

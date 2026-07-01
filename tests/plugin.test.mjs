@@ -7,15 +7,15 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PLUGIN_ROOT = path.join(ROOT, 'plugins', 'qwen');
-const COMPANION = path.join(PLUGIN_ROOT, 'scripts', 'qwen-companion.mjs');
+const QWEN_PLUGIN_ROOT = path.join(ROOT, 'plugins', 'qwen');
+const COMPANION = path.join(QWEN_PLUGIN_ROOT, 'scripts', 'qwen-companion.mjs');
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(ROOT, relativePath), 'utf8'));
 }
 
-function readPlugin(relativePath) {
-  return fs.readFileSync(path.join(PLUGIN_ROOT, relativePath), 'utf8');
+function readQwenPlugin(relativePath) {
+  return fs.readFileSync(path.join(QWEN_PLUGIN_ROOT, relativePath), 'utf8');
 }
 
 function createFakeQwen(options = {}) {
@@ -126,26 +126,57 @@ function waitForCommand(args, env, predicate) {
   assert.fail(`Timed out waiting for ${args.join(' ')}. Last output: ${last?.stdout}${last?.stderr}`);
 }
 
-test('marketplace exposes the qwen plugin', () => {
+test('claude code marketplace exposes the qwen plugin', () => {
   const marketplace = readJson('.claude-plugin/marketplace.json');
 
   assert.equal(marketplace.name, 'qwen-code');
-  assert.equal(marketplace.metadata.version, '0.4.0');
+  assert.equal(marketplace.metadata.version, '0.5.0');
   assert.equal(marketplace.plugins.length, 1);
   assert.equal(marketplace.plugins[0].name, 'qwen');
-  assert.equal(marketplace.plugins[0].version, '0.4.0');
+  assert.equal(marketplace.plugins[0].version, '0.5.0');
   assert.equal(marketplace.plugins[0].source, './plugins/qwen');
 });
 
-test('plugin manifest uses the expected Claude Code plugin name', () => {
+test('codex marketplace exposes the qwen plugin', () => {
+  const marketplace = readJson('.agents/plugins/marketplace.json');
+
+  assert.equal(marketplace.name, 'qwen-code');
+  assert.ok(marketplace.plugins.length >= 1);
+
+  const qwen = marketplace.plugins.find((p) => p.name === 'qwen');
+  assert.ok(qwen);
+  assert.equal(qwen.source.source, 'local');
+  assert.match(qwen.source.path, /qwen-codex/);
+});
+
+test('qwen plugin manifest uses the expected Claude Code plugin name', () => {
   const plugin = readJson('plugins/qwen/.claude-plugin/plugin.json');
 
   assert.equal(plugin.name, 'qwen');
-  assert.equal(plugin.version, '0.4.0');
+  assert.equal(plugin.version, '0.5.0');
+});
+
+test('qwen-codex plugin manifest uses the expected Codex plugin name', () => {
+  const plugin = readJson('plugins/qwen-codex/.codex-plugin/plugin.json');
+
+  assert.equal(plugin.name, 'qwen');
+  assert.ok(plugin.skills);
+  assert.ok(plugin.interface);
+});
+
+test('qwen-codex skill file exists', () => {
+  const skill = fs.readFileSync(
+    path.join(ROOT, 'plugins', 'qwen-codex', 'skills', 'qwen-review', 'SKILL.md'),
+    'utf8',
+  );
+
+  assert.match(skill, /name:\s*qwen-review/);
+  assert.match(skill, /qwen/i);
+  assert.match(skill, /review/i);
 });
 
 test('review command is a deterministic review-only forwarder', () => {
-  const source = readPlugin('commands/review.md');
+  const source = readQwenPlugin('commands/review.md');
 
   assert.match(source, /disable-model-invocation:\s*true/);
   assert.match(source, /\bBash\(/);
@@ -168,13 +199,13 @@ test('review command is a deterministic review-only forwarder', () => {
 });
 
 test('status, result, and cancel commands point to companion entrypoints', () => {
-  assert.match(readPlugin('commands/status.md'), /qwen-companion\.mjs" status "\$ARGUMENTS"/);
-  assert.match(readPlugin('commands/result.md'), /qwen-companion\.mjs" result "\$ARGUMENTS"/);
-  assert.match(readPlugin('commands/cancel.md'), /qwen-companion\.mjs" cancel "\$ARGUMENTS"/);
+  assert.match(readQwenPlugin('commands/status.md'), /qwen-companion\.mjs" status "\$ARGUMENTS"/);
+  assert.match(readQwenPlugin('commands/result.md'), /qwen-companion\.mjs" result "\$ARGUMENTS"/);
+  assert.match(readQwenPlugin('commands/cancel.md'), /qwen-companion\.mjs" cancel "\$ARGUMENTS"/);
 });
 
 test('setup command points users to the companion script', () => {
-  const source = readPlugin('commands/setup.md');
+  const source = readQwenPlugin('commands/setup.md');
 
   assert.match(source, /disable-model-invocation:\s*true/);
   assert.match(source, /qwen-companion\.mjs" setup "\$ARGUMENTS"/);
